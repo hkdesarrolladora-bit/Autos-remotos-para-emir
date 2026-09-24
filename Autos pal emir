@@ -1,43 +1,42 @@
--- AUTOS REMOTO - Lista todos los autos del juego con su dueño
--- Permite teleportarse y subir a cualquier auto remotamente
--- Adaptado para móvil (hkstudiozz) - Para mi amigo, Emir
-
+-- AUTOS REMOTO - Versión Completa (PC + Móvil)
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+local CoreGui = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 
--- ========== GUI ==========
+-- Evitar duplicados al re-inyectar
+pcall(function()
+    if CoreGui:FindFirstChild("AutosRemotoUI") then
+        CoreGui.AutosRemotoUI:Destroy()
+    end
+    if CoreGui:FindFirstChild("AutosRemotoMobileButton") then
+        CoreGui.AutosRemotoMobileButton:Destroy()
+    end
+end)
+
+-- ========== CONTENEDOR SEGURO ==========
+local function getContainer()
+    local success, container = pcall(function()
+        return CoreGui
+    end)
+    if success and container then
+        return container
+    end
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local TargetParent = getContainer()
+
+-- ========== GUI PRINCIPAL ==========
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AutosRemotoUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Enabled = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = game:GetService("CoreGui")
-
--- BOTÓN FLOTANTE TÁCTIL PARA MÓVIL (hkstudiozz)
-local OpenButton = Instance.new("TextButton")
-OpenButton.Size = UDim2.new(0, 60, 0, 60)
-OpenButton.Position = UDim2.new(0, 20, 0.4, -30)
-OpenButton.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
-OpenButton.TextColor3 = Color3.fromRGB(100, 180, 255)
-OpenButton.Font = Enum.Font.GothamBold
-OpenButton.TextSize = 11
-OpenButton.Text = "hkstudiozz"
-OpenButton.TextWrapped = true
-OpenButton.BorderSizePixel = 0
-OpenButton.Parent = ScreenGui
-
-local OpenButtonCorner = Instance.new("UICorner")
-OpenButtonCorner.CornerRadius = UDim.new(1, 0) -- Círculo perfecto
-OpenButtonCorner.Parent = OpenButton
-
-local OpenButtonStroke = Instance.new("UIStroke")
-OpenButtonStroke.Color = Color3.fromRGB(50, 100, 150)
-OpenButtonStroke.Thickness = 2
-OpenButtonStroke.Parent = OpenButton
+ScreenGui.Parent = TargetParent
 
 local Background = Instance.new("Frame")
 Background.Size = UDim2.new(1, 0, 1, 0)
@@ -71,7 +70,6 @@ Title.Font = Enum.Font.GothamBold
 Title.TextSize = 24
 Title.Parent = Panel
 
--- Apartado pequeño para Emir
 local DedicationLabel = Instance.new("TextLabel")
 DedicationLabel.Size = UDim2.new(1, 0, 0, 15)
 DedicationLabel.Position = UDim2.new(0, 0, 0, 36)
@@ -151,8 +149,8 @@ StatusLabel.TextSize = 13
 StatusLabel.Parent = Panel
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0.9, 0, 0, 26)
-CloseBtn.Position = UDim2.new(0.05, 0, 0, 532)
+CloseBtn.Size = UDim2.new(0.9, 0, 0, 30)
+CloseBtn.Position = UDim2.new(0.05, 0, 0, 530)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(70, 40, 40)
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
@@ -163,6 +161,36 @@ CloseBtn.Parent = Panel
 local CloseBtnCorner = Instance.new("UICorner")
 CloseBtnCorner.CornerRadius = UDim.new(0, 6)
 CloseBtnCorner.Parent = CloseBtn
+
+-- ========== BOTÓN FLOTANTE MÓVIL (hkstudiozz) ==========
+local MobileGui = Instance.new("ScreenGui")
+MobileGui.Name = "AutosRemotoMobileButton"
+MobileGui.ResetOnSpawn = false
+MobileGui.IgnoreGuiInset = true
+MobileGui.Enabled = true
+MobileGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+MobileGui.Parent = TargetParent
+
+local OpenButton = Instance.new("TextButton")
+OpenButton.Size = UDim2.new(0, 60, 0, 60)
+OpenButton.Position = UDim2.new(0, 20, 0.4, -30)
+OpenButton.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+OpenButton.TextColor3 = Color3.fromRGB(100, 180, 255)
+OpenButton.Font = Enum.Font.GothamBold
+OpenButton.TextSize = 11
+OpenButton.Text = "hkstudiozz"
+OpenButton.TextWrapped = true
+OpenButton.BorderSizePixel = 0
+OpenButton.Parent = MobileGui
+
+local OpenButtonCorner = Instance.new("UICorner")
+OpenButtonCorner.CornerRadius = UDim.new(1, 0)
+OpenButtonCorner.Parent = OpenButton
+
+local OpenButtonStroke = Instance.new("UIStroke")
+OpenButtonStroke.Color = Color3.fromRGB(50, 100, 150)
+OpenButtonStroke.Thickness = 2
+OpenButtonStroke.Parent = OpenButton
 
 -- ========== FUNCIONES UI ==========
 local function showStatus(msg, color)
@@ -178,12 +206,15 @@ local carButtons = {}
 local orderCounter = 0
 
 local function clearCarList()
-    for _, btn in ipairs(carButtons) do btn:Destroy() end
+    for _, btn in ipairs(carButtons) do
+        if btn then btn:Destroy() end
+    end
     carButtons = {}
     orderCounter = 0
 end
 
 local function getDriveSeat(car)
+    if not car then return nil end
     return car:FindFirstChildOfClass("VehicleSeat")
 end
 
@@ -230,7 +261,14 @@ local function teleportToCar(car)
     showStatus("Teletransportando...", Color3.fromRGB(100, 200, 255))
 
     task.spawn(function()
-        local carPos = car:GetPivot().Position
+        local success, carPos = pcall(function()
+            return car:GetPivot().Position
+        end)
+
+        if not success or not carPos then
+            showStatus("No se pudo obtener la posicion", Color3.fromRGB(255, 100, 100))
+            return
+        end
 
         pcall(function()
             LocalPlayer:RequestStreamAroundAsync(carPos, 15)
@@ -347,6 +385,7 @@ local function createCarButton(car)
     table.insert(carButtons, btn)
 end
 
+-- ========== REFRESCAR LISTA ==========
 local function refreshList()
     clearCarList()
 
